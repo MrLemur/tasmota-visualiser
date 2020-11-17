@@ -5,12 +5,15 @@ import pyaudio
 import sys
 import numpy as np
 import aubio
+import aiohttp
+import asyncio
+
 
 # Set up MQTT client
 client = mqtt.Client()
 client.connect("192.168.100.250", 1883)
 
-topic = "cmnd/tvlamp/Color2"
+topic = "cmnd/officelamp/Color2"
 topic2 = "cmnd/tvlamp2/Color2"
 
 colour1 = "255,0,0"
@@ -100,15 +103,11 @@ def change_colour(value):
     # elif l == 2:
     #     return three
 
-
-
-delay = 0.1
-
 # initialise pyaudio
 p = pyaudio.PyAudio()
 
 # open stream
-buffer_size = 256
+buffer_size = 512
 pyaudio_format = pyaudio.paFloat32
 n_channels = 1
 samplerate = 44100
@@ -118,12 +117,8 @@ stream = p.open(format=pyaudio_format,
                 input=True,
                 frames_per_buffer=buffer_size)
 
-
-outputsink = None
-record_duration = None
-
 # setup pitch
-tolerance = 1.0
+tolerance = 0.8
 win_s = 1024 # fft size
 hop_s =  buffer_size # hop size
 a_tempo = aubio.tempo("default", win_s, hop_s, samplerate)
@@ -132,47 +127,25 @@ a_pitch.set_unit("Hz")
 a_pitch.set_tolerance(tolerance)
 
 print("*** starting recording")
+
 while True:
     try:
         audiobuffer = stream.read(buffer_size)
         signal = np.fromstring(audiobuffer, dtype=np.float32)
-
-        
-
         is_beat = a_tempo(signal)
+        # print(a_pitch(signal))
         pitch = a_pitch(signal)[0]
-        if is_beat[0]:
-#             samples += click
-            # print ('tick')
+        if is_beat and pitch > 0:
             print(pitch)
-            color = change_colour(pitch)
-            client.publish(topic, color)
-            # color = change_colour(pitch)
-            client.publish(topic2, color)
+            colour = change_colour(pitch)
+            client.publish("zigbee2mqtt/LED Strip/set", json.dumps({"state" : "ON", "transition": 0.001, "color":{"rgb": colour}}))
+            client.publish(topic, colour)
 
-
-        # if outputsink:
-        #     outputsink(signal, len(signal))
-
-        # if record_duration:
-        #     total_frames += len(signal)
-        #     if record_duration * samplerate < total_frames:
-        #         break
     except KeyboardInterrupt:
         print("*** Ctrl+C pressed, exiting")
         break
-
-
 
 print("*** done recording")
 stream.stop_stream()
 stream.close()
 p.terminate()
-
-# while True:
-#     client.publish(topic, colour1)
-#     sleep(delay)
-#     client.publish(topic, colour2)
-#     sleep(delay)
-#     client.publish(topic, colour3)
-#     sleep(delay)

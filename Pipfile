@@ -10,6 +10,9 @@ paho-mqtt = "*"
 numpy = "*"
 pyaudio = "*"
 aubio = "*"
+asyncio = "*"
+aiohttp = "*"
+requests = "*"
 
 [requires]
 python_version = "3.8"
