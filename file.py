@@ -10,6 +10,16 @@ import asyncio
 from random import randint
 
 
+def convert_to_hex(value):
+    array = value.split(",")
+    # new_array = []
+    # for i in array:
+    #     converted = hex(int(i)).split("x")[-1]
+    #     # print(converted)
+    #     new_array.append(converted)
+    return f"#{int(array[0]):02x}{int(array[1]):02x}{int(array[2]):02x}"
+
+
 # Set up MQTT client
 client = mqtt.Client()
 client.connect("192.168.100.250", 1883)
@@ -71,68 +81,90 @@ def change_colour(value):
     #     return three
 
 
-# initialise pyaudio
+# Set constants for audio input
+BUFFER_SIZE = 1024
+CHANNELS = 1
+FORMAT = pyaudio.paFloat32
+METHOD = "default"
+SAMPLE_RATE = 44100
+HOP_SIZE = BUFFER_SIZE // 2
+PERIOD_SIZE_IN_FRAME = HOP_SIZE
+
+# Initialise pyAudio
 p = pyaudio.PyAudio()
 
-# open stream
-buffer_size = 512
-pyaudio_format = pyaudio.paFloat32
-n_channels = 1
-samplerate = 44100
-stream = p.open(
-    format=pyaudio_format,
-    channels=n_channels,
-    rate=samplerate,
+
+mic_input = p.open(
+    format=FORMAT,
+    channels=CHANNELS,
+    rate=SAMPLE_RATE,
     input=True,
-    frames_per_buffer=buffer_size,
+    frames_per_buffer=PERIOD_SIZE_IN_FRAME,
 )
 
-# setup pitch
-tolerance = 0.8
-win_s = 1024  # fft size
-hop_s = buffer_size  # hop size
-a_tempo = aubio.tempo("default", win_s, hop_s, samplerate)
-a_pitch = aubio.pitch("default", win_s, hop_s, samplerate)
-a_pitch.set_unit("Hz")
-a_pitch.set_tolerance(tolerance)
+tempo_detect = aubio.tempo(METHOD, BUFFER_SIZE, HOP_SIZE, SAMPLE_RATE)
 
-print("*** starting recording")
+pitch_detect = aubio.pitch(METHOD, BUFFER_SIZE, HOP_SIZE, SAMPLE_RATE)
+pitch_detect.set_unit("Hz")
+pitch_detect.set_silence(-40)
 
+print("Listening to mic...")
+
+# Set variable for last colour used
 last_colour = ""
+
+# Set Tasmota settings
+client.publish("cmnd/officelamp/Fade", "0")
+client.publish("cmnd/officelamp/Speed", "0")
+
 while True:
     try:
-        audiobuffer = stream.read(buffer_size)
-        signal = np.fromstring(audiobuffer, dtype=np.float32)
-        is_beat = a_tempo(signal)
-        # print(a_pitch(signal))
-        pitch = a_pitch(signal)[0]
+        audio_buffer = mic_input.read(PERIOD_SIZE_IN_FRAME)
+        samples = np.fromstring(audio_buffer, dtype=aubio.float_type)
+
+        # Detect a beat
+        is_beat = tempo_detect(samples)
+
+        # Get the pitch
+        pitch = pitch_detect(samples)[0]
+
+        # Get the volume
+        volume = np.sum(samples ** 2) / len(samples)
+
         if is_beat[0]:
-            print(pitch)
+            print(pitch, volume)
             colour_dict = change_colour(pitch)
             while colour_dict["value"] == last_colour:
                 colour_dict = change_colour(pitch)
-            print(f"Setting colour to {colour_dict['colour']}")
+            colour = colour_dict["value"]
+            # if pitch < 100:
+            #     colour = "255,0,0"
+            print(f"Setting colour to {colour}")
             client.publish(
-                "zigbee2mqtt/LED Strip/set",
+                "zigbee2mqtt/Kitchen LED Strip/set",
                 json.dumps(
                     {
                         "state": "ON",
                         "brightness": 255,
                         "transition": 0.001,
-                        "color": {"rgb": colour_dict["value"]},
+                        "color": {"rgb": colour},
                     }
                 ),
             )
-            client.publish(topic, colour_dict["value"])
+            client.publish("cmnd/tvlamp/Color2", colour)
+            client.publish("cmnd/tvlamp2/Color2", colour)
+            print(convert_to_hex(colour))
+            # client.publish("wled/5m/col", convert_to_hex(colour))
+            # client.publish(topic2, colour)
             # client.publish("cmnd/tvlamp/Color2", colour_dict["value"])
             # client.publish("cmnd/tvlamp2/Color2", colour_dict["value"])
-            last_colour = colour_dict["value"]
+            last_colour = colour
 
     except KeyboardInterrupt:
         print("*** Ctrl+C pressed, exiting")
         break
 
 print("*** done recording")
-stream.stop_stream()
-stream.close()
+mic_input.stop_mic_input()
+mic_input.close()
 p.terminate()
