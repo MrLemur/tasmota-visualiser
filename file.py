@@ -24,8 +24,28 @@ def convert_to_hex(value):
 client = mqtt.Client()
 client.connect("192.168.100.250", 1883)
 
-topic = "cmnd/officelamp/Color2"
-topic2 = "cmnd/tvlamp2/Color2"
+devices = [
+{"name": "office_lamp", "topic":"cmnd/officelamp/Color2", "colour" : colour},
+{"name": "tvlamp1", "topic":"cmnd/tvlamp1/Color2", "colour" : colour},
+{"name": "office_led_strip", "topic":"cmnd/tvlamp2/Color2", "colour" : },
+{"name": "office_lamp", "topic":"zigbee2mqtt/LED Strip/set", "colour" : json.dumps(
+                    {
+                        "state": "ON",
+                        "brightness": 255,
+                        "transition": 0.001,
+                        "color": {"rgb": colour},
+                    }
+                )},
+{"name": "kitchen_led_strip", "topic":"zigbee2mqtt/Kitchen LED Strip/set", "colour" : json.dumps(
+                    {
+                        "state": "ON",
+                        "brightness": 255,
+                        "transition": 0.001,
+                        "color": {"rgb": colour},
+                    }
+                )},]
+{"name": "wled", "topic":"wled/5m/col", "colour" : convert_to_hex(colour)}
+]
 
 colour1 = "255,0,0"
 colour2 = "0,255,0"
@@ -114,8 +134,8 @@ print("Listening to mic...")
 last_colour = ""
 
 # Set Tasmota settings
-client.publish("cmnd/officelamp/Fade", "0")
-client.publish("cmnd/officelamp/Speed", "0")
+# client.publish("cmnd/officelamp/Fade", "0")
+# client.publish("cmnd/officelamp/Speed", "0")
 
 while True:
     try:
@@ -140,20 +160,22 @@ while True:
             # if pitch < 100:
             #     colour = "255,0,0"
             print(f"Setting colour to {colour}")
-            client.publish(
-                "zigbee2mqtt/Kitchen LED Strip/set",
-                json.dumps(
-                    {
-                        "state": "ON",
-                        "brightness": 255,
-                        "transition": 0.001,
-                        "color": {"rgb": colour},
-                    }
-                ),
-            )
-            client.publish("cmnd/tvlamp/Color2", colour)
-            client.publish("cmnd/tvlamp2/Color2", colour)
-            print(convert_to_hex(colour))
+            for device in devices:
+                client.publish(device[1], device[2])
+            # client.publish(
+            #     "zigbee2mqtt/Kitchen LED Strip/set",
+            #     json.dumps(
+            #         {
+            #             "state": "ON",
+            #             "brightness": 255,
+            #             "transition": 0.001,
+            #             "color": {"rgb": colour},
+            #         }
+            #     ),
+            # )
+            # client.publish("cmnd/tvlamp/Color2", colour)
+            # client.publish("cmnd/tvlamp2/Color2", colour)
+            # print(convert_to_hex(colour))
             # client.publish("wled/5m/col", convert_to_hex(colour))
             # client.publish(topic2, colour)
             # client.publish("cmnd/tvlamp/Color2", colour_dict["value"])
