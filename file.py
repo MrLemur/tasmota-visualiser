@@ -24,28 +24,42 @@ def convert_to_hex(value):
 client = mqtt.Client()
 client.connect("192.168.100.250", 1883)
 
+colour = None
+
+
 devices = [
-{"name": "office_lamp", "topic":"cmnd/officelamp/Color2", "colour" : colour},
-{"name": "tvlamp1", "topic":"cmnd/tvlamp1/Color2", "colour" : colour},
-{"name": "office_led_strip", "topic":"cmnd/tvlamp2/Color2", "colour" : },
-{"name": "office_lamp", "topic":"zigbee2mqtt/LED Strip/set", "colour" : json.dumps(
-                    {
-                        "state": "ON",
-                        "brightness": 255,
-                        "transition": 0.001,
-                        "color": {"rgb": colour},
-                    }
-                )},
-{"name": "kitchen_led_strip", "topic":"zigbee2mqtt/Kitchen LED Strip/set", "colour" : json.dumps(
-                    {
-                        "state": "ON",
-                        "brightness": 255,
-                        "transition": 0.001,
-                        "color": {"rgb": colour},
-                    }
-                )},]
-{"name": "wled", "topic":"wled/5m/col", "colour" : convert_to_hex(colour)}
+    # {"name": "tvlamp2", "topic": "cmnd/tasmota_713AB3/Backlog", "type": "tasmota"},
+    # {"name": "tvlamp1", "topic": "cmnd/tasmota_713A6F/Backlog", "type": "tasmota"},
+    {"name": "office_lamp", "topic": "cmnd/tasmota_713A9E/Backlog", "type": "tasmota"},
+    {
+        "name": "office_led_strip",
+        "topic": "zigbee2mqtt/LED Strip/set",
+        "type": "zigbee",
+    },
+    # {
+    #     "name": "kitchen_led_strip",
+    #     "topic": "zigbee2mqtt/Kitchen LED Strip/set",
+    #     "type": "zigbee",
+    # },
+    # {"name": "wled", "topic": "wled/5m/col", "colour": convert_to_hex(colour)},
 ]
+
+
+def get_device_config(type, colour):
+    if type == "tasmota":
+        return (
+            f"NoDelay;Fade 0;NoDelay;Speed 0;NoDelay;Dimmer 100;NoDelay;Color2 {colour}"
+        )
+    if type == "zigbee":
+        return json.dumps(
+            {
+                "state": "ON",
+                "brightness": 255,
+                "transition": 0.001,
+                "color": {"rgb": colour},
+            }
+        )
+
 
 colour1 = "255,0,0"
 colour2 = "0,255,0"
@@ -140,7 +154,7 @@ last_colour = ""
 while True:
     try:
         audio_buffer = mic_input.read(PERIOD_SIZE_IN_FRAME)
-        samples = np.fromstring(audio_buffer, dtype=aubio.float_type)
+        samples = np.frombuffer(audio_buffer, dtype=aubio.float_type)
 
         # Detect a beat
         is_beat = tempo_detect(samples)
@@ -161,7 +175,9 @@ while True:
             #     colour = "255,0,0"
             print(f"Setting colour to {colour}")
             for device in devices:
-                client.publish(device[1], device[2])
+                client.publish(
+                    device["topic"], get_device_config(device["type"], colour)
+                )
             # client.publish(
             #     "zigbee2mqtt/Kitchen LED Strip/set",
             #     json.dumps(
